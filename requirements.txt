@@ -1,3 +1,6 @@
+selenium
+chromedriver_autoinstaller
+webdriver-manager
 requests
 pandas
 streamlit
