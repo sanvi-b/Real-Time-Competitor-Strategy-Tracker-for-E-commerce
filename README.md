@@ -1,5 +1,6 @@
 # Real-Time-Competitor-Strategy-Tracker-for-E-commerce
-**Project Overview **
+
+**Project Overview** 
 
 
 This project is designed to deliver real-time competitive intelligence for e-commerce businesses, helping them stay ahead by providing valuable insights into competitor pricing, discount tactics, and customer sentiment. The solution utilizes:
