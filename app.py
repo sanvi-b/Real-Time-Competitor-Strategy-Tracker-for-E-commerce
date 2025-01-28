@@ -1,19 +1,16 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
 from transformers import pipeline
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from statsmodels.tsa.arima.model import ARIMA
 
-API_KEY = "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" 
-SLACK_WEBHOOK = "https://hooks.slack.com/services/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"
+API_KEY = "" #Groq API Key
+SLACK_WEBHOOK = "" #Slack webhook url
 
 def truncate_text(text, max_length=512):
-    return text[:max_length]
+    return text[:max_length] if text else ""
 
 def load_amazon_data():
     """Load main Amazon scraped data."""
@@ -47,55 +44,31 @@ def analyze_sentiment(reviews):
     truncated_reviews = [truncate_text(str(review)) for review in reviews]
     return sentiment_pipeline(truncated_reviews)
 
-def train_predictive_model(data):
-    """Train a predictive model for pricing strategy."""
-    try:
-        X = data[['selling_price', 'discount']]
-        y = data['MRP']
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-        model = RandomForestRegressor(random_state=42)
-        model.fit(X_train, y_train)
-        return model
-    except Exception as e:
-        st.error(f"Error training predictive model: {e}")
-        return None
-
-def forecast_discounts_arima(data, future_days=5):
-    """Forecast future discounts using ARIMA."""
-    try:
-        # Prepare data for ARIMA
-        data = data.sort_values('scrape_datetime')
-        data.set_index('scrape_datetime', inplace=True)
-        
-        # Ensure we have numeric discount values
-        discount_series = pd.to_numeric(data['discount'], errors='coerce')
-        discount_series = discount_series.dropna()
-        
-        if len(discount_series) < 2:
-            raise ValueError("Not enough data points for forecasting")
-            
-        # Fit ARIMA model
-        model = ARIMA(discount_series, order=(5,1,0))
-        model_fit = model.fit()
-        
-        # Generate forecast
-        forecast = model_fit.forecast(steps=future_days)
-        future_dates = pd.date_range(
-            start=discount_series.index[-1] + pd.Timedelta(days=1),
-            periods=future_days
-        )
-        
-        forecast_df = pd.DataFrame({
-            'Date': future_dates,
-            'Predicted_Discount': forecast
-        })
-        forecast_df.set_index('Date', inplace=True)
-        
-        return forecast_df
-    except Exception as e:
-        st.error(f"Error in discount forecasting: {e}")
+def simple_price_prediction(data, days=5):
+    """Simple price prediction based on moving average"""
+    if len(data) < 2:
         return pd.DataFrame()
+        
+    # Calculate average daily change
+    data = data.sort_values('scrape_datetime')
+    daily_changes = data['discount'].diff().mean()
+    
+    last_date = data['scrape_datetime'].max()
+    last_discount = data['discount'].iloc[-1]
+    
+    future_dates = [last_date + timedelta(days=x) for x in range(1, days + 1)]
+    predicted_discounts = [last_discount + (daily_changes * x) for x in range(1, days + 1)]
+    
+    # Ensure discounts are within reasonable range (0-100)
+    predicted_discounts = [min(max(0, d), 100) for d in predicted_discounts]
+    
+    forecast_df = pd.DataFrame({
+        'Date': future_dates,
+        'Predicted_Discount': predicted_discounts
+    })
+    forecast_df.set_index('Date', inplace=True)
+    
+    return forecast_df
 
 def send_to_slack(data):
     """Send data to Slack webhook."""
@@ -211,10 +184,10 @@ else:
     else:
         st.info("No reviews available for this product.")
 
-    # Discount forecasting
+    # Simple price prediction
     if len(product_data) >= 2:
         st.subheader("Discount Forecast (Next 5 Days)")
-        forecast_df = forecast_discounts_arima(product_data)
+        forecast_df = simple_price_prediction(product_data)
         if not forecast_df.empty:
             fig_forecast = px.line(forecast_df, title="Discount Forecast")
             st.plotly_chart(fig_forecast)
