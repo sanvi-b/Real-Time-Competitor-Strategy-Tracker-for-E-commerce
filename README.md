@@ -31,16 +31,16 @@ pip install -r requirements.txt
 **3. Configure API Keys**
 This project requires the following API keys for functionality:
 
-1. Grog API Key: To generate strategic recommendations.
+1. Groq API Key: To generate strategic recommendations.
 2. Slack Webhook URL: To send notifications.
 
 Steps:
 
-1. Obtain Grog API Key:
+1. Obtain Groq API Key:
 
-(i) Sign up for a Grog account at groq.com.
+(i) Sign up for a Groq account at groq.com.
 
-(ii) Get your API key from the Grog dashboard.
+(ii) Get your API key from the Groq dashboard.
 
 (iii) Add the API key to the app.py file.
 
