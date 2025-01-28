@@ -1,135 +1,134 @@
 import json
 from datetime import datetime
-
 import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
-from openai import AzureOpenAI
+from transformers import pipeline
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from statsmodels.tsa.arima.model import ARIMA
-from transformers import pipeline
 
-API_KEY = "" #Groq API Key
-SLACK_WEBHOOK = "" #Slack webhook url
-
+API_KEY = "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" 
+SLACK_WEBHOOK = "https://hooks.slack.com/services/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"
 
 def truncate_text(text, max_length=512):
     return text[:max_length]
 
-
-def load_competitor_data():
-    """Load competitor data from a CSV file."""
-    data = pd.read_csv("competitor_data.csv")
-    print(data.head())
-    return data
-
+def load_amazon_data():
+    """Load main Amazon scraped data."""
+    try:
+        data = pd.read_csv("amazon_scraped_data.csv")
+        # Convert price columns to numeric, removing any currency symbols and commas
+        data['selling_price'] = pd.to_numeric(data['selling_price'].str.replace(',', ''), errors='coerce')
+        data['MRP'] = pd.to_numeric(data['MRP'].str.replace(',', ''), errors='coerce')
+        # Convert discount to numeric, removing % symbol
+        data['discount'] = pd.to_numeric(data['discount'].str.replace('%', ''), errors='coerce')
+        # Convert scrape_datetime to datetime
+        data['scrape_datetime'] = pd.to_datetime(data['scrape_datetime'])
+        return data
+    except Exception as e:
+        st.error(f"Error loading Amazon data: {e}")
+        return pd.DataFrame()
 
 def load_reviews_data():
-    """Load reviews data from a CSV file."""
-    reviews = pd.read_csv("reviews.csv")
-    return reviews
-
+    """Load reviews data from the reviews.csv file."""
+    try:
+        reviews = pd.read_csv("reviews.csv")
+        reviews['scrape_datetime'] = pd.to_datetime(reviews['scrape_datetime'])
+        return reviews
+    except Exception as e:
+        st.error(f"Error loading reviews data: {e}")
+        return pd.DataFrame()
 
 def analyze_sentiment(reviews):
     """Analyze customer sentiment for reviews."""
     sentiment_pipeline = pipeline("sentiment-analysis")
-    return sentiment_pipeline(reviews)
-
+    truncated_reviews = [truncate_text(str(review)) for review in reviews]
+    return sentiment_pipeline(truncated_reviews)
 
 def train_predictive_model(data):
-    """Train a predictive model for competitor pricing strategy."""
-    data["Discount"] = data["Discount"].str.replace("%", "").astype(float)
-    data["Price"] = data["Price"].astype(int)
-    data["Predicted_Discount"] = data["Discount"] + (data["Price"] * 0.05).round(2)
-
-    X = data[["Price", "Discount"]]
-    y = data["Predicted_Discount"]
-    print(X)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, train_size=0.8
-    )
-
-    model = RandomForestRegressor(random_state=42)
-    model.fit(X_train, y_train)
-    return model
-
-
-import numpy as np
-import pandas as pd
-
+    """Train a predictive model for pricing strategy."""
+    try:
+        X = data[['selling_price', 'discount']]
+        y = data['MRP']
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+        model = RandomForestRegressor(random_state=42)
+        model.fit(X_train, y_train)
+        return model
+    except Exception as e:
+        st.error(f"Error training predictive model: {e}")
+        return None
 
 def forecast_discounts_arima(data, future_days=5):
-    """
-    Forecast future discounts using ARIMA.
-    :param data: DataFrame containing historical discount data (with a datetime index).
-    :param future_days: Number of days to forecast.
-    :return: DataFrame with historical and forecasted discounts.
-    """
-
-    data = data.sort_index()
-    print(product_data.index)
-
-    data["Discount"] = pd.to_numeric(data["Discount"], errors="coerce")
-    data = data.dropna(subset=["Discount"])
-
-    discount_series = data["Discount"]
-    if not isinstance(data.index, pd.DatetimeIndex):
-        try:
-            data.index = pd.to_datetime(data.index)
-        except Exception as e:
-            raise ValueError(
-                "Index must be datetime or convertible to datetime."
-            ) from e
-
-    model = ARIMA(discount_series, order=(5, 1, 0))
-    model_fit = model.fit()
-
-    forecast = model_fit.forecast(steps=future_days)
-    future_dates = pd.date_range(
-        start=discount_series.index[-1] + pd.Timedelta(days=1), periods=future_days
-    )
-
-    forecast_df = pd.DataFrame({"Date": future_dates, "Predicted_Discount": forecast})
-    forecast_df.set_index("Date", inplace=True)
-
-    return forecast_df
-
+    """Forecast future discounts using ARIMA."""
+    try:
+        # Prepare data for ARIMA
+        data = data.sort_values('scrape_datetime')
+        data.set_index('scrape_datetime', inplace=True)
+        
+        # Ensure we have numeric discount values
+        discount_series = pd.to_numeric(data['discount'], errors='coerce')
+        discount_series = discount_series.dropna()
+        
+        if len(discount_series) < 2:
+            raise ValueError("Not enough data points for forecasting")
+            
+        # Fit ARIMA model
+        model = ARIMA(discount_series, order=(5,1,0))
+        model_fit = model.fit()
+        
+        # Generate forecast
+        forecast = model_fit.forecast(steps=future_days)
+        future_dates = pd.date_range(
+            start=discount_series.index[-1] + pd.Timedelta(days=1),
+            periods=future_days
+        )
+        
+        forecast_df = pd.DataFrame({
+            'Date': future_dates,
+            'Predicted_Discount': forecast
+        })
+        forecast_df.set_index('Date', inplace=True)
+        
+        return forecast_df
+    except Exception as e:
+        st.error(f"Error in discount forecasting: {e}")
+        return pd.DataFrame()
 
 def send_to_slack(data):
-    """ """
-    payload = {"text": data}
-    response = requests.post(
-        SLACK_WEBHOOK,
-        data=json.dumps(payload),
-        headers={"Content-Type": "application/json"},
-    )
+    """Send data to Slack webhook."""
+    try:
+        payload = {"text": data}
+        response = requests.post(
+            SLACK_WEBHOOK,
+            data=json.dumps(payload),
+            headers={"Content-Type": "application/json"}
+        )
+        return response.status_code == 200
+    except Exception as e:
+        st.error(f"Error sending to Slack: {e}")
+        return False
 
-
-def generate_strategy_recommendation(product_name, competitor_data, sentiment):
-    """Generate strategic recommendations using an LLM."""
+def generate_strategy_recommendation(product_name, product_data, sentiment):
+    """Generate strategic recommendations using Groq LLM."""
     date = datetime.now()
     prompt = f"""
     You are a highly skilled business strategist specializing in e-commerce. Based on the following details, suggest actionable strategies to optimize pricing, promotions, and customer satisfaction for the selected product:
 
 1. **Product Name**: {product_name}
 
-2. **Competitor Data** (including current prices, discounts, and predicted discounts):
-{competitor_data}
+2. **Product Data**:
+Current Price: ₹{product_data['selling_price'].iloc[-1] if not product_data.empty else 'N/A'}
+Original Price (MRP): ₹{product_data['MRP'].iloc[-1] if not product_data.empty else 'N/A'}
+Current Discount: {product_data['discount'].iloc[-1] if not product_data.empty else 'N/A'}%
+Availability: {product_data['availability'].iloc[-1] if not product_data.empty else 'N/A'}
 
 3. **Sentiment Analysis**:
 {sentiment}
 
-
-5. **Today's Date**: {str(date)}
-
-### Task:
-- Analyze the competitor data and identify key pricing trends.
-- Leverage sentiment analysis insights to highlight areas where customer satisfaction can be improved.
-- Use the discount predictions to suggest how pricing strategies can be optimized over the next 5 days.
-- Recommend promotional campaigns or marketing strategies that align with customer sentiments and competitive trends.
-- Ensure the strategies are actionable, realistic, and geared toward increasing customer satisfaction, driving sales, and outperforming competitors.
+4. **Today's Date**: {str(date)}
 
 Provide your recommendations in a structured format:
 1. **Pricing Strategy**
@@ -137,90 +136,102 @@ Provide your recommendations in a structured format:
 3. **Customer Satisfaction Recommendations**
     """
 
-    messages = [{"role": "user", "content": prompt}]
+    try:
+        data = {
+            "messages": [{"role": "user", "content": prompt}],
+            "model": "llama3-8b-8192",
+            "temperature": 0,
+        }
 
-    data = {
-        "messages": [{"role": "user", "content": prompt}],
-        "model": "llama3-8b-8192",
-        "temperature": 0,
-    }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {API_KEY}"
+        }
 
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"}
+        res = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=json.dumps(data),
+            headers=headers
+        )
+        res = res.json()
+        return res["choices"][0]["message"]["content"]
+    except Exception as e:
+        st.error(f"Error generating recommendations: {e}")
+        return "Error generating recommendations"
 
-    res = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        data=json.dumps(data),
-        headers=headers,
-    )
-    res = res.json()
-    response = res["choices"][0]["message"]["content"]
-    return response
+# Streamlit UI
+st.set_page_config(page_title="Amazon Product Analysis Dashboard", layout="wide")
+st.title("Amazon Product Analysis Dashboard")
 
-
-####--------------------------------------------------##########
-
-st.set_page_config(page_title="E-Commerce Competitor Strategy Dashboard", layout="wide")
-
-
-st.title("E-Commerce Competitor Strategy Dashboard")
-st.sidebar.header("Select a Product")
-
-products = [
-    "Apple iPhone 15",
-    "Apple 2023 MacBook Pro (16-inch, Apple M3 Pro chip with 12‑core CPU and 18‑core GPU, 36GB Unified Memory, 512GB) - Silver",
-    "OnePlus Nord 4 5G (Mercurial Silver, 8GB RAM, 256GB Storage)",
-    "Sony WH-1000XM5 Best Active Noise Cancelling Wireless Bluetooth Over Ear Headphones with Mic for Clear Calling, up to 40 Hours Battery -Black",
-]
-selected_product = st.sidebar.selectbox("Choose a product to analyze:", products)
-
-
-competitor_data = load_competitor_data()
+# Load data
+amazon_data = load_amazon_data()
 reviews_data = load_reviews_data()
 
-product_data = competitor_data[competitor_data["product_name"] == selected_product]
-product_reviews = reviews_data[reviews_data["product_name"] == selected_product]
-
-st.header(f"Competitor Analysis for {selected_product}")
-st.subheader("Competitor Data")
-st.table(product_data.tail(5))
-
-if not product_reviews.empty:
-    product_reviews["reviews"] = product_reviews["reviews"].apply(
-        lambda x: truncate_text(x, 512)
-    )
-    reviews = product_reviews["reviews"].tolist()
-    sentiments = analyze_sentiment(reviews)
-
-    st.subheader("Customer Sentiment Analysis")
-    sentiment_df = pd.DataFrame(sentiments)
-    fig = px.bar(sentiment_df, x="label", title="Sentiment Analysis Results")
-    st.plotly_chart(fig)
+if amazon_data.empty:
+    st.error("No Amazon data available. Please run the scraper first.")
 else:
-    st.write("No reviews available for this product.")
+    # Product selection
+    st.sidebar.header("Select a Product")
+    products = amazon_data['title'].unique().tolist()
+    selected_product = st.sidebar.selectbox("Choose a product to analyze:", products)
 
+    # Filter data for selected product
+    product_data = amazon_data[amazon_data['title'] == selected_product]
+    product_reviews = reviews_data[reviews_data['title'] == selected_product]
 
-# Preprocessing
+    # Display product information
+    st.header(f"Analysis for {selected_product}")
+    
+    # Product details
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Current Price", f"₹{product_data['selling_price'].iloc[-1]:,.0f}")
+    with col2:
+        st.metric("MRP", f"₹{product_data['MRP'].iloc[-1]:,.0f}")
+    with col3:
+        st.metric("Discount", f"{product_data['discount'].iloc[-1]}%")
 
-product_data["Date"] = pd.to_datetime(product_data["Date"], errors="coerce")
-product_data = product_data.dropna(subset=["Date"])
-product_data.set_index("Date", inplace=True)
-product_data = product_data.sort_index()
+    # Price history
+    st.subheader("Price History")
+    fig_price = px.line(product_data, x='scrape_datetime', y=['selling_price', 'MRP'],
+                       title="Price History Over Time")
+    st.plotly_chart(fig_price)
 
-product_data["Discount"] = pd.to_numeric(product_data["Discount"], errors="coerce")
-product_data = product_data.dropna(subset=["Discount"])
+    # Sentiment analysis
+    if not product_reviews.empty:
+        st.subheader("Customer Sentiment Analysis")
+        sentiments = analyze_sentiment(product_reviews['review_text'].tolist())
+        sentiment_df = pd.DataFrame(sentiments)
+        fig_sentiment = px.bar(sentiment_df, x="label", title="Sentiment Analysis Results")
+        st.plotly_chart(fig_sentiment)
 
-# Forecasting Model
-product_data_with_predictions = forecast_discounts_arima(product_data)
+        # Display recent reviews
+        st.subheader("Recent Reviews")
+        st.dataframe(product_reviews[['scrape_datetime', 'review_text']].tail())
+    else:
+        st.info("No reviews available for this product.")
 
+    # Discount forecasting
+    if len(product_data) >= 2:
+        st.subheader("Discount Forecast (Next 5 Days)")
+        forecast_df = forecast_discounts_arima(product_data)
+        if not forecast_df.empty:
+            fig_forecast = px.line(forecast_df, title="Discount Forecast")
+            st.plotly_chart(fig_forecast)
 
-st.subheader("Competitor Current and Predicted Discounts")
-st.table(product_data_with_predictions.tail(10))
+    # Strategic recommendations
+    st.subheader("Strategic Recommendations")
+    recommendations = generate_strategy_recommendation(
+        selected_product,
+        product_data,
+        sentiments if not product_reviews.empty else "No reviews available"
+    )
+    st.write(recommendations)
 
-recommendations = generate_strategy_recommendation(
-    selected_product,
-    product_data_with_predictions,
-    sentiments if not product_reviews.empty else "No reviews available",
-)
-st.subheader("Strategic Recommendations")
-st.write(recommendations)
-send_to_slack(recommendations)
+    # Send to Slack if webhook is configured
+    if SLACK_WEBHOOK:
+        if st.button("Send Recommendations to Slack"):
+            if send_to_slack(recommendations):
+                st.success("Recommendations sent to Slack!")
+            else:
+                st.error("Failed to send recommendations to Slack")
