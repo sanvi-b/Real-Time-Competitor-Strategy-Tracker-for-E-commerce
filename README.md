@@ -67,7 +67,7 @@ streamlit run app.py
   
 3. reviews.csv: Sample reviews data used for sentiment analysis.
   
-4. competitor_data.csv: Sample data for competitor analysis.
+4. amazon_scraped_data.csv: Sample data for competitor analysis.
   
 5. requirements.txt: List of dependencies required for the project.
 
