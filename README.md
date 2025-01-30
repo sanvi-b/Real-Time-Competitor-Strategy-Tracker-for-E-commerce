@@ -70,6 +70,8 @@ streamlit run app.py
 4. amazon_scraped_data.csv: Sample data for competitor analysis.
   
 5. requirements.txt: List of dependencies required for the project.
+6. Procfile: tells cloud platforms what command to run to start your application.
+7. config.toml: Streamlit-specific settings that customize the app's appearance and behavior.
 
 **Usage**
 1. Launch the Streamlit app.
