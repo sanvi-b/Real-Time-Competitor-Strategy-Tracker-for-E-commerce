@@ -2,8 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import time
-from random import uniform
-from datetime import datetime
+from random import uniform, randint
+from datetime import datetime, timedelta
 import logging
 
 # Set up logging
@@ -63,18 +63,14 @@ def get_rating(soup):
 def get_review_texts(soup, max_reviews=5):
     try:
         reviews = []
-        # Try finding reviews in the main product page
         review_elements = soup.find_all("div", attrs={'data-hook': 'review-collapsed'})
         if not review_elements:
             review_elements = soup.find_all("div", attrs={'class': 'a-expander-content reviewText'})
         
-        # Get up to max_reviews reviews
         for review in review_elements[:max_reviews]:
             review_text = review.text.strip()
             if review_text:
                 reviews.append(review_text)
-        
-        # If no reviews found, return an empty list
         return reviews if reviews else []
     
     except Exception as e:
@@ -82,14 +78,13 @@ def get_review_texts(soup, max_reviews=5):
         return []
 
 def generate_random_date(start_date="2023-01-01", end_date="2024-02-29"):
-    """Generates a random date string between start_date and end_date."""
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
     time_between_dates = end - start
     random_number_of_days = randint(0, time_between_dates.days)
     random_date = start + timedelta(days=random_number_of_days)
-    return random_date.strftime("%Y-%m-%d %H:%M:%S")  # Include time
-    
+    return random_date.strftime("%Y-%m-%d %H:%M:%S")
+
 def scrape_amazon_products(search_url, max_products=50):
     base_url = "https://www.amazon.in"
     headers = {
@@ -121,18 +116,16 @@ def scrape_amazon_products(search_url, max_products=50):
             if not product_url.startswith('http'):
                 product_url = base_url + product_url
 
-           try:
+            try:
                 logger.info(f"Scraping product: {product_url}")
                 time.sleep(uniform(1, 3))
                 response = session.get(product_url, headers=headers)
                 response.raise_for_status()
 
                 product_soup = BeautifulSoup(response.content, "html.parser")
-                # Use random date instead of current time
-                scrape_datetime = generate_random_date()  # Call the function here
+                product_scrape_datetime = generate_random_date()
                 title = get_title(product_soup)
 
-                # Get product data
                 product_data = {
                     "title": title,
                     "selling_price": get_selling_price(product_soup),
@@ -141,19 +134,19 @@ def scrape_amazon_products(search_url, max_products=50):
                     "rating": get_rating(product_soup),
                     "availability": "Available",
                     "url": product_url,
-                    "scrape_datetime": scrape_datetime  # Assign the random date
+                    "scrape_datetime": product_scrape_datetime
                 }
                 products_data.append(product_data)
 
-                # Get reviews data
                 review_texts = get_review_texts(product_soup)
                 for i, review_text in enumerate(review_texts, 1):
+                    review_scrape_datetime = generate_random_date()
                     review_data = {
                         "title": title,
                         "review_number": i,
                         "review_count": len(review_texts),
                         "review_text": review_text,
-                        "scrape_datetime": scrape_datetime  # Assign the same random date
+                        "scrape_datetime": review_scrape_datetime
                     }
                     reviews_data.append(review_data)
 
@@ -161,11 +154,9 @@ def scrape_amazon_products(search_url, max_products=50):
                 logger.error(f"Error scraping product {product_url}: {e}")
                 continue
 
-        # Create DataFrames
         products_df = pd.DataFrame(products_data)
         reviews_df = pd.DataFrame(reviews_data)
 
-        # Clean data
         products_df['title'] = products_df['title'].replace('', pd.NA)
         products_df = products_df.dropna(subset=['title'])
 
@@ -175,16 +166,15 @@ def scrape_amazon_products(search_url, max_products=50):
         logger.error(f"Error in main scraping process: {e}")
         return None, None
 
+
 if __name__ == '__main__':
     search_url = "https://www.amazon.in/s?k=earphones&crid=23H19CC51YB96&sprefix-earphone%2Caps%2C228&ref=nb_sb_noss_2"
     products_df, reviews_df = scrape_amazon_products(search_url)
 
     if products_df is not None and not products_df.empty:
-        # Save product data
         products_df.to_csv("amazon_scraped_data.csv", header=True, index=False)
         logger.info(f"Successfully scraped {len(products_df)} products")
 
-        # Save reviews data
         if not reviews_df.empty:
             reviews_df.to_csv("reviews.csv", index=False)
             logger.info(f"Successfully saved {len(reviews_df)} reviews")
