@@ -172,20 +172,28 @@ else:
         st.metric("Total Reviews Analyzed", f"{total_reviews} out of {review_count}")
 
     # Price history
-    st.subheader("Price History (3-Hour Intervals)")
+    st.subheader("Price History")
 
-    # Resample to 3-hour intervals
     product_data.set_index('scrape_datetime', inplace=True)
-    numeric_columns = product_data.select_dtypes(include=['number']).columns
-    product_data_resampled = product_data[numeric_columns].resample('3H').mean()
 
-    # Reset index and plot
+    # Determine appropriate resampling interval based on data availability
+    time_diff = product_data.index.max() - product_data.index.min()
+    if time_diff <= timedelta(days=1):
+        resample_interval = '1H'  # Hourly if less than a day
+    elif time_diff <= timedelta(days=7):
+        resample_interval = '12H'  # 12-hourly if less than a week
+    else:
+        resample_interval = '1D'  # Daily otherwise
+
+    numeric_columns = product_data.select_dtypes(include=['number']).columns
+    product_data_resampled = product_data[numeric_columns].resample(resample_interval).mean()
     product_data_resampled = product_data_resampled.reset_index()
+
     if not product_data_resampled.empty:
-        fig_price = px.line(product_data_resampled, x='scrape_datetime', y=['selling_price', 'MRP'], title="Price History Over Time (3-Hour Intervals)")
+        fig_price = px.line(product_data_resampled, x='scrape_datetime', y=['selling_price', 'MRP'], title=f"Price History Over Time ({resample_interval} Intervals)")
         st.plotly_chart(fig_price)
     else:
-        st.warning("No data available for the selected product at 3-hour intervals.")
+        st.warning("No data available for the selected product.")
 
     # Sentiment analysis
     if not product_reviews.empty:
