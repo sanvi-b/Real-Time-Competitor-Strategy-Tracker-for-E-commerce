@@ -1,1 +1,39 @@
-
+{
+  "name": "Python 3 with Streamlit and Groq",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bullseye",
+  "customizations": {
+    "codespaces": {
+      "openFiles": [
+        "app.py",
+        "requirements.txt",
+        "config.toml",  // Assuming this file is relevant
+        "amazon_scraped_data.csv", // Add data files
+        "reviews.csv"        // Add data files
+      ]
+    },
+    "vscode": {
+      "settings": {},
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "streamlit.streamlit" // Add Streamlit extension
+      ]
+    }
+  },
+  "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; echo '✅ Packages installed and Requirements met'",
+  "postAttachCommand": {
+    "server": "streamlit run app.py --server.enableCORS false --server.enableXsrfProtection false" // Run app.py
+  },
+  "portsAttributes": {
+    "8501": {
+      "label": "Streamlit App",  // More descriptive label
+      "onAutoForward": "openPreview"
+    }
+  },
+  "forwardPorts": [
+    8501
+  ],
+  "mounts": [ // Mount the current directory to access data files
+    "source=${localEnv:workspaceFolder},target=/workspaces/app,type=bind"
+  ]
+}
