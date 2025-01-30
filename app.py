@@ -6,8 +6,8 @@ import requests
 import streamlit as st
 from transformers import pipeline
 
-API_KEY = "" #Groq API Key
-SLACK_WEBHOOK = "" #Slack webhook url
+API_KEY = "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"  # Groq API Key
+SLACK_WEBHOOK = "https://hooks.slack.com/services/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"  # Slack webhook url
 
 def truncate_text(text, max_length=512):
     return text[:max_length] if text else ""
@@ -17,10 +17,10 @@ def load_amazon_data():
     try:
         data = pd.read_csv("amazon_scraped_data.csv")
         # Convert price columns to numeric, removing any currency symbols and commas
-        data['selling_price'] = pd.to_numeric(data['selling_price'].str.replace(',', ''), errors='coerce')
-        data['MRP'] = pd.to_numeric(data['MRP'].str.replace(',', ''), errors='coerce')
-        # Convert discount to numeric, removing % symbol
-        data['discount'] = pd.to_numeric(data['discount'].str.replace('%', ''), errors='coerce')
+        data['selling_price'] = pd.to_numeric(data['selling_price'].astype(str).str.replace(',', ''), errors='coerce')
+        data['MRP'] = pd.to_numeric(data['MRP'].astype(str).str.replace(',', ''), errors='coerce')
+        data['discount'] = pd.to_numeric(data['discount'].astype(str).str.replace('%', ''), errors='coerce')
+
         # Convert scrape_datetime to datetime
         data['scrape_datetime'] = pd.to_datetime(data['scrape_datetime'])
         return data
@@ -48,26 +48,26 @@ def simple_price_prediction(data, days=5):
     """Simple price prediction based on moving average"""
     if len(data) < 2:
         return pd.DataFrame()
-        
+
     # Calculate average daily change
     data = data.sort_values('scrape_datetime')
     daily_changes = data['discount'].diff().mean()
-    
+
     last_date = data['scrape_datetime'].max()
     last_discount = data['discount'].iloc[-1]
-    
+
     future_dates = [last_date + timedelta(days=x) for x in range(1, days + 1)]
     predicted_discounts = [last_discount + (daily_changes * x) for x in range(1, days + 1)]
-    
+
     # Ensure discounts are within reasonable range (0-100)
     predicted_discounts = [min(max(0, d), 100) for d in predicted_discounts]
-    
+
     forecast_df = pd.DataFrame({
         'Date': future_dates,
         'Predicted_Discount': predicted_discounts
     })
     forecast_df.set_index('Date', inplace=True)
-    
+
     return forecast_df
 
 def send_to_slack(data):
@@ -154,7 +154,7 @@ else:
 
     # Display product information
     st.header(f"Analysis for {selected_product}")
-    
+
     # Product details
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -164,11 +164,28 @@ else:
     with col3:
         st.metric("Discount", f"{product_data['discount'].iloc[-1]}%")
 
+    # Display review statistics
+    if not product_reviews.empty:
+        st.subheader("Review Statistics")
+        total_reviews = len(product_reviews)
+        review_count = product_reviews['review_count'].iloc[0]
+        st.metric("Total Reviews Analyzed", f"{total_reviews} out of {review_count}")
+
     # Price history
-    st.subheader("Price History")
-    fig_price = px.line(product_data, x='scrape_datetime', y=['selling_price', 'MRP'],
-                       title="Price History Over Time")
-    st.plotly_chart(fig_price)
+    st.subheader("Price History (3-Hour Intervals)")
+
+    # Resample to 3-hour intervals
+    product_data.set_index('scrape_datetime', inplace=True)
+    numeric_columns = product_data.select_dtypes(include=['number']).columns
+    product_data_resampled = product_data[numeric_columns].resample('3H').mean()
+
+    # Reset index and plot
+    product_data_resampled = product_data_resampled.reset_index()
+    if not product_data_resampled.empty:
+        fig_price = px.line(product_data_resampled, x='scrape_datetime', y=['selling_price', 'MRP'], title="Price History Over Time (3-Hour Intervals)")
+        st.plotly_chart(fig_price)
+    else:
+        st.warning("No data available for the selected product at 3-hour intervals.")
 
     # Sentiment analysis
     if not product_reviews.empty:
@@ -180,7 +197,7 @@ else:
 
         # Display recent reviews
         st.subheader("Recent Reviews")
-        st.dataframe(product_reviews[['scrape_datetime', 'review_text']].tail())
+        st.dataframe(product_reviews[['review_number', 'scrape_datetime', 'review_text']].sort_values('review_number'))
     else:
         st.info("No reviews available for this product.")
 
