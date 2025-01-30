@@ -13,15 +13,11 @@ def truncate_text(text, max_length=512):
     return text[:max_length] if text else ""
 
 def load_amazon_data():
-    """Load main Amazon scraped data."""
     try:
         data = pd.read_csv("amazon_scraped_data.csv")
-        # Convert price columns to numeric, removing any currency symbols and commas
         data['selling_price'] = pd.to_numeric(data['selling_price'].astype(str).str.replace(',', ''), errors='coerce')
         data['MRP'] = pd.to_numeric(data['MRP'].astype(str).str.replace(',', ''), errors='coerce')
         data['discount'] = pd.to_numeric(data['discount'].astype(str).str.replace('%', ''), errors='coerce')
-
-        # Convert scrape_datetime to datetime
         data['scrape_datetime'] = pd.to_datetime(data['scrape_datetime'])
         return data
     except Exception as e:
@@ -29,7 +25,6 @@ def load_amazon_data():
         return pd.DataFrame()
 
 def load_reviews_data():
-    """Load reviews data from the reviews.csv file."""
     try:
         reviews = pd.read_csv("reviews.csv")
         reviews['scrape_datetime'] = pd.to_datetime(reviews['scrape_datetime'])
@@ -39,17 +34,14 @@ def load_reviews_data():
         return pd.DataFrame()
 
 def analyze_sentiment(reviews):
-    """Analyze customer sentiment for reviews."""
     sentiment_pipeline = pipeline("sentiment-analysis")
     truncated_reviews = [truncate_text(str(review)) for review in reviews]
     return sentiment_pipeline(truncated_reviews)
 
 def simple_price_prediction(data, days=5):
-    """Simple price prediction based on moving average"""
     if len(data) < 2:
         return pd.DataFrame()
 
-    # Calculate average daily change
     data = data.sort_values('scrape_datetime')
     daily_changes = data['discount'].diff().mean()
 
@@ -58,8 +50,6 @@ def simple_price_prediction(data, days=5):
 
     future_dates = [last_date + timedelta(days=x) for x in range(1, days + 1)]
     predicted_discounts = [last_discount + (daily_changes * x) for x in range(1, days + 1)]
-
-    # Ensure discounts are within reasonable range (0-100)
     predicted_discounts = [min(max(0, d), 100) for d in predicted_discounts]
 
     forecast_df = pd.DataFrame({
@@ -71,7 +61,6 @@ def simple_price_prediction(data, days=5):
     return forecast_df
 
 def send_to_slack(data):
-    """Send data to Slack webhook."""
     try:
         payload = {"text": data}
         response = requests.post(
@@ -85,34 +74,33 @@ def send_to_slack(data):
         return False
 
 def generate_strategy_recommendation(product_name, product_data, sentiment):
-    """Generate strategic recommendations using Groq LLM."""
     date = datetime.now()
     prompt = f"""
     You are a highly skilled business strategist specializing in e-commerce. Based on the following details, suggest actionable strategies to optimize pricing, promotions, and customer satisfaction for the selected product:
 
-1. **Product Name**: {product_name}
+    1. **Product Name**: {product_name}
 
-2. **Product Data**:
-Current Price: ₹{product_data['selling_price'].iloc[-1] if not product_data.empty else 'N/A'}
-Original Price (MRP): ₹{product_data['MRP'].iloc[-1] if not product_data.empty else 'N/A'}
-Current Discount: {product_data['discount'].iloc[-1] if not product_data.empty else 'N/A'}%
-Availability: {product_data['availability'].iloc[-1] if not product_data.empty else 'N/A'}
+    2. **Product Data**:
+    Current Price: ₹{product_data['selling_price'].iloc[-1] if not product_data.empty else 'N/A'}
+    Original Price (MRP): ₹{product_data['MRP'].iloc[-1] if not product_data.empty else 'N/A'}
+    Current Discount: {product_data['discount'].iloc[-1] if not product_data.empty else 'N/A'}%
+    Availability: {product_data['availability'].iloc[-1] if not product_data.empty else 'N/A'}
 
-3. **Sentiment Analysis**:
-{sentiment}
+    3. **Sentiment Analysis**:
+    {sentiment}
 
-4. **Today's Date**: {str(date)}
+    4. **Today's Date**: {str(date)}
 
-Provide your recommendations in a structured format:
-1. **Pricing Strategy**
-2. **Promotional Campaign Ideas**
-3. **Customer Satisfaction Recommendations**
+    Provide your recommendations in a structured format:
+    1. **Pricing Strategy**
+    2. **Promotional Campaign Ideas**
+    3. **Customer Satisfaction Recommendations**
     """
 
     try:
         data = {
             "messages": [{"role": "user", "content": prompt}],
-            "model": "llama3-8b-8192",
+            "model": "llama3-8b-8192",  # Or another suitable model
             "temperature": 0,
         }
 
@@ -132,30 +120,26 @@ Provide your recommendations in a structured format:
         st.error(f"Error generating recommendations: {e}")
         return "Error generating recommendations"
 
+
 # Streamlit UI
 st.set_page_config(page_title="Amazon Product Analysis Dashboard", layout="wide")
 st.title("Amazon Product Analysis Dashboard")
 
-# Load data
 amazon_data = load_amazon_data()
 reviews_data = load_reviews_data()
 
 if amazon_data.empty:
     st.error("No Amazon data available. Please run the scraper first.")
 else:
-    # Product selection
     st.sidebar.header("Select a Product")
     products = amazon_data['title'].unique().tolist()
     selected_product = st.sidebar.selectbox("Choose a product to analyze:", products)
 
-    # Filter data for selected product
-    product_data = amazon_data[amazon_data['title'] == selected_product]
-    product_reviews = reviews_data[reviews_data['title'] == selected_product]
+    product_data = amazon_data[amazon_data['title'] == selected_product].copy()
+    product_reviews = reviews_data[reviews_data['title'] == selected_product].copy()
 
-    # Display product information
     st.header(f"Analysis for {selected_product}")
 
-    # Product details
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Current Price", f"₹{product_data['selling_price'].iloc[-1]:,.0f}")
@@ -164,41 +148,45 @@ else:
     with col3:
         st.metric("Discount", f"{product_data['discount'].iloc[-1]}%")
 
-    # Display review statistics
     if not product_reviews.empty:
         st.subheader("Review Statistics")
         total_reviews = len(product_reviews)
         review_count = product_reviews['review_count'].iloc[0]
         st.metric("Total Reviews Analyzed", f"{total_reviews} out of {review_count}")
 
-    # Price history
     st.subheader("Price History")
 
-    product_data.set_index('scrape_datetime', inplace=True)
+    if not product_data.empty:
+        product_data = product_data.sort_values('scrape_datetime')
 
-    time_diff = product_data.index.max() - product_data.index.min()
-    if time_diff <= timedelta(days=1):
-        resample_interval = '5min' # Resample to 5-minute intervals for better visualization
-    elif time_diff <= timedelta(days=7):
-        resample_interval = '1H' # Resample to 1-hour intervals for better visualization
-    else:
-        resample_interval = '1D'
+        time_diff = product_data['scrape_datetime'].max() - product_data['scrape_datetime'].min()
 
-    numeric_columns = product_data.select_dtypes(include=['number']).columns
-    product_data_resampled = product_data[numeric_columns].resample(resample_interval).mean()
-    product_data_resampled = product_data_resampled.reset_index()
+        if time_diff <= timedelta(days=1):
+            resample_interval = '1H'
+            tick_format = "%H:%M"
+        elif time_diff <= timedelta(days=7):
+            resample_interval = '12H'
+            tick_format = "%Y-%m-%d %H:%M"
+        elif time_diff <= timedelta(days=30):
+            resample_interval = '1D'
+            tick_format = "%Y-%m-%d"
+        else:
+            resample_interval = '7D'
+            tick_format = "%Y-%m-%d"
 
-    if not product_data_resampled.empty:
-        fig_price = px.line(product_data_resampled, x='scrape_datetime', y=['selling_price', 'MRP'], title=f"Price History Over Time ({resample_interval} Intervals)")
+        product_data = product_data.set_index('scrape_datetime')
 
-        # Format x-axis ticks for better readability
-        fig_price.update_xaxes(
-            tickformat="%H:%M"  # Format as HH:MM (e.g., 13:55, 14:00)
-        )
+        numeric_cols = product_data.select_dtypes(include=['number']).columns
+        product_data_resampled = product_data[numeric_cols].resample(resample_interval).mean()
+        product_data_resampled = product_data_resampled.reset_index()
+
+        fig_price = px.line(product_data_resampled, x='scrape_datetime', y=['selling_price', 'MRP'], 
+                            title=f"Price History ({resample_interval} Intervals)")
+        fig_price.update_xaxes(tickformat=tick_format)
         st.plotly_chart(fig_price)
-    else:
-        st.warning("No data available for the selected product.")
 
+    else:
+        st.warning("No price data available for this product.")
     # Sentiment analysis
     if not product_reviews.empty:
         st.subheader("Customer Sentiment Analysis")
