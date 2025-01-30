@@ -176,14 +176,13 @@ else:
 
     product_data.set_index('scrape_datetime', inplace=True)
 
-    # Determine appropriate resampling interval based on data availability
     time_diff = product_data.index.max() - product_data.index.min()
     if time_diff <= timedelta(days=1):
-        resample_interval = '1H'  # Hourly if less than a day
+        resample_interval = '5min' # Resample to 5-minute intervals for better visualization
     elif time_diff <= timedelta(days=7):
-        resample_interval = '12H'  # 12-hourly if less than a week
+        resample_interval = '1H' # Resample to 1-hour intervals for better visualization
     else:
-        resample_interval = '1D'  # Daily otherwise
+        resample_interval = '1D'
 
     numeric_columns = product_data.select_dtypes(include=['number']).columns
     product_data_resampled = product_data[numeric_columns].resample(resample_interval).mean()
@@ -191,6 +190,11 @@ else:
 
     if not product_data_resampled.empty:
         fig_price = px.line(product_data_resampled, x='scrape_datetime', y=['selling_price', 'MRP'], title=f"Price History Over Time ({resample_interval} Intervals)")
+
+        # Format x-axis ticks for better readability
+        fig_price.update_xaxes(
+            tickformat="%H:%M"  # Format as HH:MM (e.g., 13:55, 14:00)
+        )
         st.plotly_chart(fig_price)
     else:
         st.warning("No data available for the selected product.")
