@@ -81,6 +81,15 @@ def get_review_texts(soup, max_reviews=5):
         logger.error(f"Error extracting review texts: {e}")
         return []
 
+def generate_random_date(start_date="2023-01-01", end_date="2024-02-29"):
+    """Generates a random date string between start_date and end_date."""
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+    time_between_dates = end - start
+    random_number_of_days = randint(0, time_between_dates.days)
+    random_date = start + timedelta(days=random_number_of_days)
+    return random_date.strftime("%Y-%m-%d %H:%M:%S")  # Include time
+    
 def scrape_amazon_products(search_url, max_products=50):
     base_url = "https://www.amazon.in"
     headers = {
@@ -112,14 +121,15 @@ def scrape_amazon_products(search_url, max_products=50):
             if not product_url.startswith('http'):
                 product_url = base_url + product_url
 
-            try:
+           try:
                 logger.info(f"Scraping product: {product_url}")
                 time.sleep(uniform(1, 3))
                 response = session.get(product_url, headers=headers)
                 response.raise_for_status()
 
                 product_soup = BeautifulSoup(response.content, "html.parser")
-                current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Use random date instead of current time
+                scrape_datetime = generate_random_date()  # Call the function here
                 title = get_title(product_soup)
 
                 # Get product data
@@ -131,7 +141,7 @@ def scrape_amazon_products(search_url, max_products=50):
                     "rating": get_rating(product_soup),
                     "availability": "Available",
                     "url": product_url,
-                    "scrape_datetime": current_datetime
+                    "scrape_datetime": scrape_datetime  # Assign the random date
                 }
                 products_data.append(product_data)
 
@@ -143,7 +153,7 @@ def scrape_amazon_products(search_url, max_products=50):
                         "review_number": i,
                         "review_count": len(review_texts),
                         "review_text": review_text,
-                        "scrape_datetime": current_datetime
+                        "scrape_datetime": scrape_datetime  # Assign the same random date
                     }
                     reviews_data.append(review_data)
 
