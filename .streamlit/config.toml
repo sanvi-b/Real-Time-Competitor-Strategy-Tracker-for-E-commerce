@@ -1,13 +1,13 @@
 [theme]
-primaryColor = "#FF9900"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F2F6"
-textColor = "#262730"
+primaryColor = "#FFC300"  # A slightly brighter, more vibrant gold
+backgroundColor = "#111111"  # Dark, but not pure black for better contrast
+secondaryBackgroundColor = "#1A1A1A" # Slightly lighter than background for depth
+textColor = "#EEEEEE"      # Light gray for excellent contrast on dark background
 font = "sans serif"
 
 [server]
-enableCORS = false
-enableXsrfProtection = true
+enableCORS = false  # Keep this as needed for your setup
+enableXsrfProtection = true # Important for security
 
 [browser]
-gatherUsageStats = false
+gatherUsageStats = false #  Respect user privacy
